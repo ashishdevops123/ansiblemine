@@ -1,0 +1,85 @@
+---
+  - name: nopcommerce
+    become: yes
+    hosts: [appserver]
+    vars:
+      service_file: /etc/systemd/system/nopCommerce450
+      micro_url:  https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb
+      default_nginx: /etc/nginx/sites-available/default
+    tasks:
+      - name: updating packages
+        ansible.builtin.apt:
+          state: present
+          update_cache: no
+      - name: downloading microsoft
+        ansible.builtin.get_url:
+          url:  "{{micro_url}}"
+          dest: /home/ubuntu/packages-microsoft-prod.deb
+      - name:  dpkg microsoft package
+        ansible.builtin.apt:
+          deb: /home/ubuntu/packages-microsoft-prod.deb
+      - name: updating packages again
+        ansible.builtin.apt:
+          state: present
+      - name: Installing .netcore runtimes
+        apt:
+          name: "{{ item }}"
+          update_cache: yes
+          state: present
+        with_items:
+            - apt-transport-https
+            - aspnetcore-runtime-6.0
+      - ansible.builtin.apt:
+          name: mysql-server
+          state: present
+      - name: installing nginx
+        ansible.builtin.apt:
+          name: nginx
+          state: present
+      - name: Make sure 'nginx' is started
+         name: nginx
+          state: started
+          enabled: yes
+        register: result
+      - name: Show result
+        debug:
+          msg: "{{ result }}"
+      - name: reverse proxy
+        ansible.builtin.template:
+          src: nginx.service
+          dest: "{{  default_nginx }}"
+      - name: ensure nginx service is running
+        ansible.builtin.systemd:
+          name: 'nginx.service'
+          state: 'restarted'
+      - name: creating a directory for nopcommerce
+        ansible.builtin.file:
+          path: /var/www/nopCommerce450
+          state: directory
+      - name: Downloading nopcommerce
+        get_url:
+          url: https://github.com/nopSolutions/nopCommerce/releases/download/release-4.50.2/nopCommerce_4.50.2_NoSource_linux_x64.zip
+          dest: /var/www/nopCommerce450
+      - name: creating a directory for bin
+        ansible.builtin.file:
+          path: /var/www/nopCommerce450/bin
+          state: directory
+      - name: creating a directory for logs
+        ansible.builtin.file:
+          path: /var/www/nopCommerce450/logs
+          state: directory
+      - name: Template a file to /etc/file.conf
+        ansible.builtin.template:
+          src: 'nop.service'
+          dest: "{{ service_file }}"
+        notify:
+          -  calling service handlers
+    handlers:
+      - name: calling service handlers
+        ansible.builtin.systemd:
+          name: nopCommerce450.service
+          daemon_reload: yes
+          enabled: yes
+          state: restarted
+     
+
